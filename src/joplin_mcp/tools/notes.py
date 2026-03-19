@@ -1,3 +1,4 @@
+import time
 from fastmcp import FastMCP
 
 from ..client import JoplinClient
@@ -5,178 +6,225 @@ from ..config import Settings
 
 
 def register_tools(mcp: FastMCP, settings: Settings):
-    """注册笔记相关工具"""
+    """注册笔记核心操作工具"""
     client = JoplinClient(settings.joplin.base_url, settings.joplin.token)
+
+    @mcp.tool
+    async def create_note(
+        title: str,
+        body: str | None = None,
+        folder_id: str | None = None,
+    ) -> dict:
+        """创建普通笔记
+
+        Args:
+            title: 笔记标题
+            body: 可选，Markdown 格式的笔记内容
+            folder_id: 可选，指定笔记本 ID
+        """
+        data = {"title": title}
+        if body:
+            data["body"] = body
+        if folder_id:
+            data["parent_id"] = folder_id
+
+        result = await client.post("/notes", data)
+        return result
+
+    @mcp.tool
+    async def clip_webpage(
+        url: str,
+        title: str | None = None,
+        folder_id: str | None = None,
+    ) -> dict:
+        """剪藏网页
+
+        Args:
+            url: 网页 URL
+            title: 可选，笔记标题（默认使用网页标题）
+            folder_id: 可选，指定笔记本 ID
+        """
+        data = {
+            "title": title or url,
+            "source_url": url,
+        }
+        if folder_id:
+            data["parent_id"] = folder_id
+
+        result = await client.post("/notes", data)
+        return result
+
+    @mcp.tool
+    async def paste_image_note(
+        title: str,
+        image_data: str,
+        folder_id: str | None = None,
+    ) -> dict:
+        """创建带图片的笔记
+
+        Args:
+            title: 笔记标题
+            image_data: Base64 编码的图片数据或 Data URL
+            folder_id: 可选，指定笔记本 ID
+        """
+        data = {
+            "title": title,
+            "image_data_url": image_data,
+        }
+        if folder_id:
+            data["parent_id"] = folder_id
+
+        result = await client.post("/notes", data)
+        return result
+
+    @mcp.tool
+    async def get_note(
+        note_id: str,
+        include_body: bool = True,
+    ) -> dict:
+        """获取单个笔记详情
+
+        Args:
+            note_id: 笔记 ID
+            include_body: 是否包含笔记正文（默认 True）
+        """
+        if include_body:
+            result = await client.get(f"/notes/{note_id}")
+        else:
+            result = await client.get(
+                f"/notes/{note_id}",
+                {
+                    "fields": "id,title,created_time,updated_time,is_todo,todo_completed,todo_due,parent_id"
+                },
+            )
+        return result
 
     @mcp.tool
     async def list_notes(
         folder_id: str | None = None,
         limit: int = 10,
-        page: int = 1,
-        order_by: str = "updated_time",
-        order_dir: str = "DESC",
-        include_deleted: bool = False,
-        include_conflicts: bool = False,
+        sort: str = "updated",
+        order: str = "desc",
     ) -> dict:
         """获取笔记列表
 
         Args:
             folder_id: 可选，指定笔记本 ID 过滤
             limit: 每页数量 (1-100)
-            page: 页码
-            order_by: 排序字段 (created_time, updated_time, title 等)
-            order_dir: 排序方向 (ASC, DESC)
-            include_deleted: 是否包含回收站中的笔记
-            include_conflicts: 是否包含冲突笔记
+            sort: 排序字段 (created, updated, title)
+            order: 排序方向 (asc, desc)
         """
         params = {
             "limit": min(limit, 100),
-            "page": page,
-            "order_by": order_by,
-            "order_dir": order_dir,
+            "order_by": f"{sort}_time" if sort in ["created", "updated"] else sort,
+            "order_dir": order.upper(),
         }
         if folder_id:
             params["folder_id"] = folder_id
-        if include_deleted:
-            params["include_deleted"] = "1"
-        if include_conflicts:
-            params["include_conflicts"] = "1"
 
         result = await client.get("/notes", params)
         return result
 
     @mcp.tool
-    async def get_note(note_id: str, fields: str | None = None) -> dict:
-        """获取单个笔记详情
+    async def list_recent_notes(
+        hours: int = 24,
+        limit: int = 10,
+    ) -> dict:
+        """获取最近更新的笔记
+
+        Args:
+            hours: 最近多少小时
+            limit: 返回数量限制
+        """
+        cutoff_time = int((time.time() - hours * 3600) * 1000)
+        params = {
+            "limit": min(limit, 100),
+            "order_by": "updated_time",
+            "order_dir": "DESC",
+        }
+        result = await client.get("/notes", params)
+
+        filtered = [
+            note for note in result.get("items", []) if note.get("updated_time", 0) >= cutoff_time
+        ]
+
+        return {"items": filtered, "has_more": len(filtered) == limit}
+
+    @mcp.tool
+    async def move_note(note_id: str, folder_id: str) -> dict:
+        """移动笔记到另一个笔记本
 
         Args:
             note_id: 笔记 ID
-            fields: 可选，逗号分隔的字段列表，如 "title,body,created_time"
+            folder_id: 目标笔记本 ID
         """
-        params = {}
-        if fields:
-            params["fields"] = fields
-
-        result = await client.get(f"/notes/{note_id}", params)
+        result = await client.put(f"/notes/{note_id}", {"parent_id": folder_id})
         return result
 
     @mcp.tool
-    async def create_note(
-        title: str,
-        body: str | None = None,
-        body_html: str | None = None,
-        folder_id: str | None = None,
-        image_data_url: str | None = None,
-        is_todo: bool = False,
-        todo_due: int | None = None,
+    async def copy_note(
+        note_id: str,
+        folder_id: str,
+        new_title: str | None = None,
     ) -> dict:
-        """创建新笔记
+        """复制笔记到另一个笔记本
 
         Args:
-            title: 笔记标题
-            body: Markdown 格式的笔记内容
-            body_html: HTML 格式的笔记内容（与 body 二选一）
-            folder_id: 可选，指定笔记本 ID
-            image_data_url: 可选，Data URL 格式的图像
-            is_todo: 是否为待办事项
-            todo_due: 待办事项到期时间（毫秒时间戳）
+            note_id: 笔记 ID
+            folder_id: 目标笔记本 ID
+            new_title: 可选，新笔记标题（默认使用原标题）
         """
-        data = {"title": title}
-        if body:
-            data["body"] = body
-        if body_html:
-            data["body_html"] = body_html
-        if folder_id:
-            data["parent_id"] = folder_id
-        if image_data_url:
-            data["image_data_url"] = image_data_url
-        if is_todo:
+        original = await client.get(f"/notes/{note_id}")
+        data = {
+            "title": new_title or original.get("title"),
+            "body": original.get("body", ""),
+            "parent_id": folder_id,
+        }
+        if original.get("is_todo"):
             data["is_todo"] = "1"
-        if todo_due:
-            data["todo_due"] = str(todo_due)
+        if original.get("todo_due"):
+            data["todo_due"] = str(original.get("todo_due"))
 
         result = await client.post("/notes", data)
         return result
 
     @mcp.tool
-    async def update_note(
-        note_id: str,
-        title: str | None = None,
-        body: str | None = None,
-        body_html: str | None = None,
-        is_todo: bool | None = None,
-        todo_due: int | None = None,
-        todo_completed: int | None = None,
-        folder_id: str | None = None,
-    ) -> dict:
-        """更新笔记属性
+    async def trash_note(note_id: str) -> dict:
+        """将笔记移至回收站
 
         Args:
             note_id: 笔记 ID
-            title: 笔记标题
-            body: Markdown 格式的笔记内容
-            body_html: HTML 格式的笔记内容
-            is_todo: 是否为待办事项
-            todo_due: 待办事项到期时间（毫秒时间戳）
-            todo_completed: 待办事项完成时间（毫秒时间戳）
-            folder_id: 笔记本 ID
         """
-        data = {}
-        if title is not None:
-            data["title"] = title
-        if body is not None:
-            data["body"] = body
-        if body_html is not None:
-            data["body_html"] = body_html
-        if is_todo is not None:
-            data["is_todo"] = "1" if is_todo else "0"
-        if todo_due is not None:
-            data["todo_due"] = str(todo_due)
-        if todo_completed is not None:
-            data["todo_completed"] = str(todo_completed)
-        if folder_id is not None:
-            data["parent_id"] = folder_id
-
-        result = await client.put(f"/notes/{note_id}", data)
+        result = await client.delete(f"/notes/{note_id}", permanent=False)
         return result
 
     @mcp.tool
-    async def delete_note(note_id: str, permanent: bool = False) -> dict:
-        """删除笔记
+    async def restore_note(note_id: str) -> dict:
+        """从回收站恢复笔记
 
         Args:
             note_id: 笔记 ID
-            permanent: 是否永久删除（默认移至回收站）
         """
-        result = await client.delete(f"/notes/{note_id}", permanent=permanent)
+        result = await client.put(f"/notes/{note_id}", {"deleted_time": "0"})
         return result
 
     @mcp.tool
-    async def get_note_tags(note_id: str) -> dict:
-        """获取笔记的标签
+    async def permanently_delete_note(note_id: str) -> dict:
+        """永久删除笔记
 
         Args:
             note_id: 笔记 ID
         """
-        result = await client.get(f"/notes/{note_id}/tags")
+        result = await client.delete(f"/notes/{note_id}", permanent=True)
         return result
 
     @mcp.tool
-    async def get_note_resources(note_id: str) -> dict:
-        """获取笔记的附件资源
+    async def archive_note(note_id: str, archive_folder_id: str) -> dict:
+        """归档笔记（移动到归档笔记本）
 
         Args:
             note_id: 笔记 ID
+            archive_folder_id: 归档笔记本 ID
         """
-        result = await client.get(f"/notes/{note_id}/resources")
-        return result
-
-    @mcp.tool
-    async def delete_note_revisions(note_id: str) -> dict:
-        """删除笔记的所有修订版本
-
-        Args:
-            note_id: 笔记 ID
-        """
-        result = await client.delete(f"/notes/{note_id}/revisions")
+        result = await client.put(f"/notes/{note_id}", {"parent_id": archive_folder_id})
         return result
