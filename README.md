@@ -28,13 +28,13 @@
 ### 2. 安装依赖
 
 ```bash
-pip install -r requirements.txt
+pip install -e .
 ```
 
-或使用 pyproject.toml：
+开发模式（包含测试工具）：
 
 ```bash
-pip install -e .
+pip install -e ".[dev]"
 ```
 
 ### 3. 配置环境变量
@@ -153,8 +153,8 @@ python -m joplin_mcp.server
 ```
 joplin-mcp/
 ├── pyproject.toml          # 项目配置
-├── requirements.txt        # 依赖列表
 ├── .env.example            # 环境变量模板
+├── README.md               # 项目说明
 ├── src/joplin_mcp/
 │   ├── server.py           # FastMCP 服务器入口
 │   ├── config.py           # 配置管理
@@ -176,7 +176,7 @@ joplin-mcp/
 安装开发依赖：
 
 ```bash
-pip install -r requirements.txt pytest pytest-asyncio ruff
+pip install -e ".[dev]"
 ```
 
 运行测试：
