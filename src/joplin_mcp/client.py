@@ -74,6 +74,10 @@ class JoplinClient:
         try:
             response = await self._client.delete(endpoint, params=params)
             response.raise_for_status()
+            # DELETE 操作可能返回空响应体
+            content = response.content
+            if not content or content.strip() == b"":
+                return {}
             return response.json()
         except httpx.ConnectError as e:
             raise JoplinConnectionError(f"无法连接到 Joplin: {e}")

@@ -184,3 +184,4 @@ credentials/
 
 # Custom files
 docs/joplin_rest_api.html
+.env

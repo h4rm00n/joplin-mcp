@@ -59,14 +59,21 @@ def register_tools(mcp: FastMCP, settings: Settings):
         return result
 
     @mcp.tool
-    async def update_tag(tag_id: str, **kwargs) -> dict:
+    async def update_tag(
+        tag_id: str,
+        title: str | None = None,
+    ) -> dict:
         """更新标签属性
 
         Args:
             tag_id: 标签 ID
-            kwargs: 要更新的属性，如 title 等
+            title: 标签标题
         """
-        result = await client.put(f"/tags/{tag_id}", kwargs)
+        data = {}
+        if title is not None:
+            data["title"] = title
+
+        result = await client.put(f"/tags/{tag_id}", data)
         return result
 
     @mcp.tool

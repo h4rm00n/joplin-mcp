@@ -43,14 +43,25 @@ def register_tools(mcp: FastMCP, settings: Settings):
         return result
 
     @mcp.tool
-    async def update_folder(folder_id: str, **kwargs) -> dict:
+    async def update_folder(
+        folder_id: str,
+        title: str | None = None,
+        icon: str | None = None,
+    ) -> dict:
         """更新笔记本属性
 
         Args:
             folder_id: 笔记本 ID
-            kwargs: 要更新的属性，如 title, icon 等
+            title: 笔记本标题
+            icon: 图标 emoji
         """
-        result = await client.put(f"/folders/{folder_id}", kwargs)
+        data = {}
+        if title is not None:
+            data["title"] = title
+        if icon is not None:
+            data["icon"] = icon
+
+        result = await client.put(f"/folders/{folder_id}", data)
         return result
 
     @mcp.tool

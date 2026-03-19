@@ -1,7 +1,10 @@
+from dotenv import load_dotenv
 from fastmcp import FastMCP
 
-from .config import Settings
-from .tools import notes, folders, tags, resources, search
+from joplin_mcp.config import Settings
+from joplin_mcp.tools import notes, folders, tags, resources, search
+
+load_dotenv()
 
 
 def create_mcp_server(settings: Settings) -> FastMCP:

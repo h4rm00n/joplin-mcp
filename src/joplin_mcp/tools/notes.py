@@ -99,14 +99,45 @@ def register_tools(mcp: FastMCP, settings: Settings):
         return result
 
     @mcp.tool
-    async def update_note(note_id: str, **kwargs) -> dict:
+    async def update_note(
+        note_id: str,
+        title: str | None = None,
+        body: str | None = None,
+        body_html: str | None = None,
+        is_todo: bool | None = None,
+        todo_due: int | None = None,
+        todo_completed: int | None = None,
+        folder_id: str | None = None,
+    ) -> dict:
         """更新笔记属性
 
         Args:
             note_id: 笔记 ID
-            kwargs: 要更新的属性，如 title, body, is_todo, todo_completed 等
+            title: 笔记标题
+            body: Markdown 格式的笔记内容
+            body_html: HTML 格式的笔记内容
+            is_todo: 是否为待办事项
+            todo_due: 待办事项到期时间（毫秒时间戳）
+            todo_completed: 待办事项完成时间（毫秒时间戳）
+            folder_id: 笔记本 ID
         """
-        result = await client.put(f"/notes/{note_id}", kwargs)
+        data = {}
+        if title is not None:
+            data["title"] = title
+        if body is not None:
+            data["body"] = body
+        if body_html is not None:
+            data["body_html"] = body_html
+        if is_todo is not None:
+            data["is_todo"] = "1" if is_todo else "0"
+        if todo_due is not None:
+            data["todo_due"] = str(todo_due)
+        if todo_completed is not None:
+            data["todo_completed"] = str(todo_completed)
+        if folder_id is not None:
+            data["parent_id"] = folder_id
+
+        result = await client.put(f"/notes/{note_id}", data)
         return result
 
     @mcp.tool
