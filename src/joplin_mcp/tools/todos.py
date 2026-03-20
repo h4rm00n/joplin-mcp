@@ -102,19 +102,30 @@ def register_tools(mcp: FastMCP, settings: Settings):
             order_by: 排序字段
             order_dir: 排序方向 (ASC, DESC)
         """
+        # 使用 Joplin 搜索语法：type:todo 和 iscompleted:0/1
+        # 参考：https://joplinapp.org/help/apps/search/
+        search_query = "type:todo"
+        if status == "active":
+            search_query += " iscompleted:0"
+        elif status == "completed":
+            search_query += " iscompleted:1"
+
         params = {
-            "query": "is_todo:1",
+            "query": search_query,
             "limit": min(limit, 100),
             "page": page,
             "order_by": order_by,
             "order_dir": order_dir,
         }
-        if folder_id:
-            params["folder_id"] = folder_id
-        if status == "active":
-            params["query"] += " AND todo_completed:0"
-        elif status == "completed":
-            params["query"] += " AND todo_completed:1"
 
-        result = await client.get("/notes", params)
+        # 使用 /search 端点进行搜索
+        result = await client.get("/search", params)
+
+        # 如果指定了 folder_id，需要在客户端过滤
+        if folder_id and "items" in result:
+            filtered_items = [
+                item for item in result["items"] if item.get("parent_id") == folder_id
+            ]
+            result["items"] = filtered_items
+
         return result
