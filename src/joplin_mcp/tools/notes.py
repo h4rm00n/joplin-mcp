@@ -89,7 +89,10 @@ def register_tools(mcp: FastMCP, settings: Settings):
             include_body: 是否包含笔记正文（默认 True）
         """
         if include_body:
-            result = await client.get(f"/notes/{note_id}")
+            result = await client.get(
+                f"/notes/{note_id}",
+                {"fields": "id,parent_id,title,body,created_time,updated_time,is_todo,todo_completed,todo_due"},
+            )
         else:
             result = await client.get(
                 f"/notes/{note_id}",
