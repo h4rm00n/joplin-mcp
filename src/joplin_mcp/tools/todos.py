@@ -103,7 +103,7 @@ def register_tools(mcp: FastMCP, settings: Settings):
             order_dir: 排序方向 (ASC, DESC)
         """
         params = {
-            "is_todo": "1",
+            "query": "is_todo:1",
             "limit": min(limit, 100),
             "page": page,
             "order_by": order_by,
@@ -112,9 +112,9 @@ def register_tools(mcp: FastMCP, settings: Settings):
         if folder_id:
             params["folder_id"] = folder_id
         if status == "active":
-            params["todo_completed"] = "0"
+            params["query"] += " AND todo_completed:0"
         elif status == "completed":
-            params["todo_completed"] = "1"
+            params["query"] += " AND todo_completed:1"
 
         result = await client.get("/notes", params)
         return result
