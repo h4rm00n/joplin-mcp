@@ -9,13 +9,35 @@ def register_tools(mcp: FastMCP, settings: Settings):
     client = JoplinClient(settings.joplin.base_url, settings.joplin.token)
 
     @mcp.tool
-    async def list_folders() -> dict:
-        """获取笔记本列表（树形结构）
+    async def list_folders(as_tree: bool = False) -> dict:
+        """获取笔记本列表
 
-        返回嵌套的笔记本树形结构，子笔记本在 children 键下
+        Args:
+            as_tree: 是否返回树形结构（默认 False 返回扁平列表）
         """
-        result = await client.get("/folders")
-        return result
+        if as_tree:
+            folders = await client.get("/folders")
+            tree = build_folder_tree(folders.get("items", []))
+            return {"items": tree}
+        else:
+            result = await client.get("/folders")
+            return result
+
+    def build_folder_tree(folders: list) -> list:
+        """将扁平的笔记本列表转换为树形结构"""
+        folder_map = {f["id"]: {**f, "children": []} for f in folders}
+        root_folders = []
+
+        for folder in folder_map.values():
+            parent_id = folder.get("parent_id")
+            if parent_id:
+                parent = folder_map.get(parent_id)
+                if parent:
+                    parent["children"].append(folder)
+            else:
+                root_folders.append(folder)
+
+        return root_folders
 
     @mcp.tool
     async def get_folder(folder_id: str) -> dict:
@@ -29,7 +51,7 @@ def register_tools(mcp: FastMCP, settings: Settings):
 
     @mcp.tool
     async def create_folder(title: str, parent_id: str | None = None) -> dict:
-        """创建新笔记本
+        """创建笔记本
 
         Args:
             title: 笔记本标题
@@ -43,61 +65,111 @@ def register_tools(mcp: FastMCP, settings: Settings):
         return result
 
     @mcp.tool
-    async def update_folder(
-        folder_id: str,
-        title: str | None = None,
-        icon: str | None = None,
-    ) -> dict:
-        """更新笔记本属性
+    async def create_subfolder(parent_id: str, title: str) -> dict:
+        """创建子笔记本
+
+        Args:
+            parent_id: 父笔记本 ID
+            title: 子笔记本标题
+        """
+        data = {"title": title, "parent_id": parent_id}
+        result = await client.post("/folders", data)
+        return result
+
+    @mcp.tool
+    async def rename_folder(folder_id: str, title: str) -> dict:
+        """重命名笔记本
 
         Args:
             folder_id: 笔记本 ID
-            title: 笔记本标题
-            icon: 图标 emoji
+            title: 新标题
         """
-        data = {}
-        if title is not None:
-            data["title"] = title
-        if icon is not None:
-            data["icon"] = icon
+        result = await client.put(f"/folders/{folder_id}", {"title": title})
+        return result
 
+    @mcp.tool
+    async def move_folder(folder_id: str, new_parent_id: str | None = None) -> dict:
+        """移动笔记本
+
+        Args:
+            folder_id: 笔记本 ID
+            new_parent_id: 新父笔记本 ID（None 表示移到根目录）
+        """
+        data = {"parent_id": new_parent_id} if new_parent_id else {"parent_id": ""}
         result = await client.put(f"/folders/{folder_id}", data)
         return result
 
     @mcp.tool
-    async def delete_folder(folder_id: str, permanent: bool = False) -> dict:
-        """删除笔记本
+    async def set_folder_icon(folder_id: str, icon: str) -> dict:
+        """设置笔记本图标 emoji
 
         Args:
             folder_id: 笔记本 ID
-            permanent: 是否永久删除（默认移至回收站）
+            icon: Emoji 图标
         """
-        result = await client.delete(f"/folders/{folder_id}", permanent=permanent)
+        result = await client.put(f"/folders/{folder_id}", {"icon": icon})
         return result
+
+    @mcp.tool
+    async def get_folder_tree() -> dict:
+        """获取完整的笔记本树形结构
+
+        返回嵌套的笔记本树形结构
+        """
+        folders = await client.get("/folders")
+        tree = build_folder_tree(folders.get("items", []))
+        return {"items": tree}
 
     @mcp.tool
     async def get_folder_notes(
         folder_id: str,
         limit: int = 10,
-        page: int = 1,
-        order_by: str = "updated_time",
-        order_dir: str = "DESC",
+        sort: str = "updated",
+        order: str = "desc",
     ) -> dict:
         """获取笔记本内的笔记列表
 
         Args:
             folder_id: 笔记本 ID
             limit: 每页数量 (1-100)
-            page: 页码
-            order_by: 排序字段
-            order_dir: 排序方向 (ASC, DESC)
+            sort: 排序字段 (created, updated, title)
+            order: 排序方向 (asc, desc)
         """
         params = {
             "limit": min(limit, 100),
-            "page": page,
-            "order_by": order_by,
-            "order_dir": order_dir,
+            "order_by": f"{sort}_time" if sort in ["created", "updated"] else sort,
+            "order_dir": order.upper(),
         }
 
         result = await client.get(f"/folders/{folder_id}/notes", params)
+        return result
+
+    @mcp.tool
+    async def trash_folder(folder_id: str) -> dict:
+        """将笔记本移至回收站
+
+        Args:
+            folder_id: 笔记本 ID
+        """
+        result = await client.delete(f"/folders/{folder_id}", permanent=False)
+        return result
+
+    @mcp.tool
+    async def restore_folder(folder_id: str) -> dict:
+        """从回收站恢复笔记本
+
+        Args:
+            folder_id: 笔记本 ID
+        """
+        result = await client.put(f"/folders/{folder_id}", {"deleted_time": "0"})
+        return result
+
+    @mcp.tool
+    async def permanently_delete_folder(folder_id: str) -> dict:
+        """永久删除笔记本
+
+        Args:
+            folder_id: 笔记本 ID
+        """
+        result = await client.delete(f"/folders/{folder_id}", permanent=True)
         return result
