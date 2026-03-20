@@ -59,10 +59,9 @@ JOPLIN_MCP_JOPLIN__TOKEN=your_api_token_here
 fastmcp run src/joplin_mcp/server.py
 ```
 
-或使用 Python：
-
 ```bash
-python -m joplin_mcp.server
+# 采用streamable http方式
+fastmcp run src/joplin_mcp/server.py --transport http --port 8881
 ```
 
 ### 5. 配置 MCP 客户端
